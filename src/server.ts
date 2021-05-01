@@ -45,6 +45,6 @@ app.use(
 app.use(express.json());
 app.use(routes);
 
-server.listen(3333, () =>
-  console.log(`server started: PORT: ${3333} | ENV: dev`)
+server.listen(process.env.PORT || 3333, () =>
+  console.log(`server started: PORT: ${process.env.PORT || 3333} | ENV: dev`)
 );
