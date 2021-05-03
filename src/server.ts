@@ -1,12 +1,43 @@
 import { Socket } from "socket.io";
-require("dotenv").config();
+import resolveName from "./resolveName";
 const net = require("net");
 const express = require("express");
 const cors = require("cors");
 const http = require("http");
 const socketio = require("socket.io");
+const grpc = require("@grpc/grpc-js");
+const protoLoader = require("@grpc/proto-loader");
 const { Router } = require("express");
+
+const PROTO_PATH = __dirname + "/resolve.proto";
 const routes = Router();
+require("dotenv").config();
+
+const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
+  keepCase: true,
+  longs: String,
+  enums: String,
+  defaults: true,
+  oneofs: true,
+});
+
+const name_resolver_proto = grpc.loadPackageDefinition(packageDefinition)
+  .nameresolver;
+
+function startgRPCServer() {
+  const gRPCServer = new grpc.Server();
+  gRPCServer.addService(name_resolver_proto.RPC.service, {
+    ResolveName: resolveName,
+  });
+  gRPCServer.bindAsync(
+    "0.0.0.0:50051",
+    grpc.ServerCredentials.createInsecure(),
+    () => {
+      gRPCServer.start();
+      console.log("[gRPC] Started");
+    }
+  );
+}
 
 const app = express();
 const server = http.Server(app);
@@ -37,6 +68,8 @@ io.on("connection", (socket: Socket) => {
     if (typeof data !== "string") throw Error("Espera-se receber uma string");
     try {
       const client = new net.Socket();
+      // client.connect(5000, "localhost", () => {
+      // console.log(process.env.RPC_S_PORT, process.env.RPC_S_HOST);
       client.connect(process.env.RPC_S_PORT, process.env.RPC_S_HOST, () => {
         console.log("[RPC_S_LIB] initials_rpc => Connected");
         client.write(data);
@@ -59,6 +92,21 @@ io.on("connection", (socket: Socket) => {
     }
   });
 
+  socket.on("initials_grpc", (data: string) => {
+    console.log(`[GRPC - initials_grpc] Name => ${data} (${typeof data}) `);
+    if (typeof data !== "string") throw Error("Espera-se receber uma string");
+    const client = new name_resolver_proto.RPC(
+      "localhost:50051",
+      grpc.credentials.createInsecure()
+    );
+    client.ResolveName({ name: data }, function (err: any, response: any) {
+      io.emit("initials", {
+        initials: response.message,
+        protocol: "gRPC",
+      });
+    });
+  });
+
   socket.on("disconnect", (reason: any) => {
     console.log(
       `[SOCKET] Disconnect => An user has disconnected | reason: ${reason}`
@@ -76,6 +124,7 @@ app.use(
 app.use(express.json());
 app.use(routes);
 
+startgRPCServer();
 server.listen(process.env.PORT || 3333, () =>
   console.log(`server started: PORT: ${process.env.PORT || 3333} | ENV: dev`)
 );

@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package nameresolver;
+
+service RPC {
+ 
+  rpc ResolveName (ClientRequest) returns (ServerResponse) {}
+}
+
+
+message ClientRequest {
+  string name = 1;
+}
+
+
+message ServerResponse {
+  string message = 1;
+}
+
